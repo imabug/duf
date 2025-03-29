@@ -17,6 +17,7 @@ type TableOptions struct {
 	Columns []int
 	SortBy  int
 	Style   table.Style
+    Totals  bool
 }
 
 // Column defines a column.
@@ -29,18 +30,53 @@ type Column struct {
 
 // "Mounted on", "Size", "Used", "Avail", "Use%", "Inodes", "IUsed", "IAvail", "IUse%", "Type", "Filesystem"
 // mountpoint, size, used, avail, usage, inodes, inodes_used, inodes_avail, inodes_usage, type, filesystem
-var columns = []Column{
-	{ID: "mountpoint", Name: "Mounted on", SortIndex: 1},
-	{ID: "size", Name: "Size", SortIndex: 12, Width: 7},
-	{ID: "used", Name: "Used", SortIndex: 13, Width: 7},
-	{ID: "avail", Name: "Avail", SortIndex: 14, Width: 7},
-	{ID: "usage", Name: "Use%", SortIndex: 15, Width: 6},
-	{ID: "inodes", Name: "Inodes", SortIndex: 16, Width: 7},
-	{ID: "inodes_used", Name: "IUsed", SortIndex: 17, Width: 7},
-	{ID: "inodes_avail", Name: "IAvail", SortIndex: 18, Width: 7},
-	{ID: "inodes_usage", Name: "IUse%", SortIndex: 19, Width: 6},
-	{ID: "type", Name: "Type", SortIndex: 10},
-	{ID: "filesystem", Name: "Filesystem", SortIndex: 11},
+var (
+	// "Mounted on", "Size", "Used", "Avail", "Use%", "Inodes", "IUsed", "IAvail", "IUse%", "Type", "Filesystem"
+	// mountpoint, size, used, avail, usage, inodes, inodes_used, inodes_avail, inodes_usage, type, filesystem
+	columns = []Column{
+		{ID: "mountpoint", Name: "Mounted on", SortIndex: 1},
+		{ID: "size", Name: "Size", SortIndex: 12, Width: 7},
+		{ID: "used", Name: "Used", SortIndex: 13, Width: 7},
+		{ID: "avail", Name: "Avail", SortIndex: 14, Width: 7},
+		{ID: "usage", Name: "Use%", SortIndex: 15, Width: 6},
+		{ID: "inodes", Name: "Inodes", SortIndex: 16, Width: 7},
+		{ID: "inodes_used", Name: "IUsed", SortIndex: 17, Width: 7},
+		{ID: "inodes_avail", Name: "IAvail", SortIndex: 18, Width: 7},
+		{ID: "inodes_usage", Name: "IUse%", SortIndex: 19, Width: 6},
+		{ID: "type", Name: "Type", SortIndex: 10},
+		{ID: "filesystem", Name: "Filesystem", SortIndex: 11},
+	}
+)
+
+func printTotals(total_size uint64, total_used uint64, total_avail uint64, opts TableOptions) {
+	tab := table.NewWriter()
+	tab.SetAllowedRowLength(int(*width))
+	tab.SetOutputMirror(os.Stdout)
+	tab.Style().Options.SeparateColumns = true
+	tab.SetStyle(opts.Style)
+
+	tab.SetColumnConfigs([]table.ColumnConfig{
+		{Number: 1, WidthMin: len(columns[0].Name)},
+		{Number: 2, Transformer: sizeTransformer, Align: text.AlignRight, AlignHeader: text.AlignRight},
+		{Number: 3, Transformer: sizeTransformer, Align: text.AlignRight, AlignHeader: text.AlignRight},
+		{Number: 4, Transformer: spaceTransformer, Align: text.AlignRight, AlignHeader: text.AlignRight},
+	})
+
+	tab.SetTitle("grand totals")
+	tab.AppendHeader(table.Row{
+		"",
+		"Size",
+		"Used",
+		"Avail",
+	})
+	tab.AppendRow(table.Row{
+		"TOTAL",
+		total_size,
+		total_used,
+		total_avail,
+	})
+
+	tab.Render()
 }
 
 // printTable prints an individual table of mounts.
@@ -104,8 +140,18 @@ func printTable(title string, m []Mount, opts TableOptions) {
 	}
 	tab.AppendHeader(headers)
 
-	for _, v := range m {
+	var total_size uint64 = 0
+	var total_used uint64 = 0
+	var total_avail uint64 = 0
+
+for _, v := range m {
 		// spew.Dump(v)
+
+        if opts.Totals {
+			total_size += v.Total
+			total_used += v.Used
+			total_avail += v.Free
+		}
 
 		var usage, inodeUsage float64
 		if v.Total > 0 {
@@ -155,6 +201,14 @@ func printTable(title string, m []Mount, opts TableOptions) {
 	tab.SetTitle("%d %s %s", tab.Length(), title, suffix)
 
 	// tab.AppendFooter(table.Row{fmt.Sprintf("%d %s", tab.Length(), title)})
+	if opts.Totals {
+		tab.AppendFooter(table.Row{
+			"TOTAL",
+			sizeToString(total_size),
+			sizeToString(total_used),
+			sizeToString(total_avail),
+		})
+	}
 	sortMode := table.Asc
 	if opts.SortBy >= 12 {
 		sortMode = table.AscNumeric
