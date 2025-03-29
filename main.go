@@ -279,7 +279,7 @@ func main() {
 	// validate arguments
 	if len(flag.Args()) > 0 {
 		var mounts []Mount
-
+		vis := map[string]struct{}{}
 		for _, v := range flag.Args() {
 			var fm []Mount
 			fm, err = findMounts(m, v)
@@ -288,7 +288,13 @@ func main() {
 				os.Exit(1)
 			}
 
-			mounts = append(mounts, fm...)
+			// de-duplicate
+			for _, v := range fm {
+				if _, ok := vis[v.Device]; !ok {
+					mounts = append(mounts, v)
+					vis[v.Device] = struct{}{}
+				}
+			}
 		}
 
 		m = mounts
